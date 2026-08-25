@@ -1,34 +1,48 @@
-# インシデント対応ライフサイクル (NIST SP 800-61)
-
-## 1. 準備 (Preparation)
-- ポリシー策定、教育、ツール導入、監視体制の整備
-- インシデントが発生する前に備える段階
-
-## 2. 検知・分析 (Detection & Analysis)
-- アラートやログからインシデントを検知
-- 影響範囲・深刻度を判断
-
-## 3. 封じ込め (Containment)
-- 被害拡大を防ぐための応急処置
-- 例: ネットワーク遮断、アカウント停止
-
-## 4. 根絶 (Eradication)
-- マルウェア、不正アカウント、脆弱性の除去
-- 攻撃の原因を完全に取り除く
-
-## 5. 復旧 (Recovery)
-- システムを正常に復元
-- 業務を通常状態に戻し、再発防止を確認
-
-## 6. 教訓 (Lessons Learned)
-- インシデント報告書の作成
-- 改善策や教育を行い、次回への対応力を高める
-
----
-
-「**準備 → 検知 → 封じ込め → 根絶 → 復旧 → 教訓**」の6ステップ
+#!/bin/bash
+set -e
+git clone https://github.com/mattermost/docker
+cd docker
 
 
+echo "=== 1. Docker & Docker Compose インストール ==="
+sudo apt-get update
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+  -o Dpkg::Options::="--force-confdef" \
+  -o Dpkg::Options::="--force-confold" \
+  docker.io docker-compose
 
+# Docker サービスの起動 & 自動起動有効化
+sudo systemctl enable --now docker
 
+echo "=== 2. .env ファイルの作成と設定変更 ==="
+if [ ! -f "env.example" ]; then
+    echo "エラー: $(pwd) に env.example が見つかりません。"
+    exit 1
+fi
 
+# env.example をコピーして .env を作成
+cp env.example .env
+
+# ドメインを localhost に変更
+sed -i 's/^DOMAIN=.*/DOMAIN=localhost/' .env
+
+# タイムゾーンを Asia/Tokyo に変更
+sed -i 's/^TZ=.*/TZ=Asia\/Tokyo/' .env
+
+# Edition を mattermost-team-edition に変更
+sed -i 's/^MATTERMOST_IMAGE=.*/MATTERMOST_IMAGE=mattermost-team-edition/' .env
+
+# SiteURL を http に変更
+sed -i 's|^MM_SERVICESETTINGS_SITEURL=.*|MM_SERVICESETTINGS_SITEURL=http://${DOMAIN}|' .env
+
+echo "=== 3. ボリュームディレクトリの作成と権限設定 ==="
+mkdir -p ./volumes/app/mattermost/{config,data,logs,plugins,client/plugins,bleve-indexes}
+sudo chown -R 2000:2000 ./volumes/app/mattermost
+
+echo "=== 4. Mattermost コンテナの起動 ==="
+sudo docker compose -f docker-compose.yml -f docker-compose.without-nginx.yml up -d
+
+echo "=========================================="
+echo " 起動が完了しました！"
+echo " ブラウザから http://localhost:8065 にアクセスしてください。"
+echo "=========================================="
